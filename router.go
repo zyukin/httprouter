@@ -154,6 +154,11 @@ func New() *Router {
 	}
 }
 
+// Create new route group.
+func (r *Router) NewGroup(path string) *RouteGroup {
+	return newRouteGroup(r, path)
+}
+
 // GET is a shortcut for router.Handle("GET", path, handle)
 func (r *Router) GET(path string, handle Handle) {
 	r.Handle("GET", path, handle)
