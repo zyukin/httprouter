@@ -273,7 +273,7 @@ func (r *Router) recv(w http.ResponseWriter, req *http.Request) {
 // the same path with an extra / without the trailing slash should be performed.
 func (r *Router) Lookup(method, path string) (Handle, context.Context, bool) {
 	if root := r.trees[method]; root != nil {
-		return root.getValue(path)
+		return root.getValue(path, context.Background())
 	}
 	return nil, nil, false
 }
@@ -299,7 +299,7 @@ func (r *Router) allowed(path, reqMethod string) (allow string) {
 				continue
 			}
 
-			handle, _, _ := r.trees[method].getValue(path)
+			handle, _, _ := r.trees[method].getValue(path, nil)
 			if handle != nil {
 				// add request method to list of allowed methods
 				if len(allow) == 0 {
@@ -325,7 +325,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
 
 	if root := r.trees[req.Method]; root != nil {
-		if handle, ctx, tsr := root.getValue(path); handle != nil {
+		if handle, ctx, tsr := root.getValue(path, req.Context()); handle != nil {
 			handle(w, req.WithContext(ctx))
 			return
 		} else if req.Method != "CONNECT" && path != "/" {
