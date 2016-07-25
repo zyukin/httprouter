@@ -5,7 +5,6 @@
 package httprouter
 
 import (
-	"context"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -116,9 +115,9 @@ func (n *node) addRoute(path string, handle Handle) {
 				}
 
 				// Update maxParams (max of all children)
-				for i := range child.children {
-					if child.children[i].maxParams > child.maxParams {
-						child.maxParams = child.children[i].maxParams
+				for j := range child.children {
+					if child.children[j].maxParams > child.maxParams {
+						child.maxParams = child.children[j].maxParams
 					}
 				}
 
@@ -167,10 +166,10 @@ func (n *node) addRoute(path string, handle Handle) {
 				}
 
 				// Check if a child with the next path byte exists
-				for i := 0; i < len(n.indices); i++ {
-					if c == n.indices[i] {
-						i = n.incrementChildPrio(i)
-						n = n.children[i]
+				for j := 0; j < len(n.indices); j++ {
+					if c == n.indices[j] {
+						j = n.incrementChildPrio(j)
+						n = n.children[j]
 						continue walk
 					}
 				}
@@ -321,8 +320,7 @@ func (n *node) insertChild(numParams uint8, path, fullPath string, handle Handle
 // If no handle can be found, a TSR (trailing slash redirect) recommendation is
 // made if a handle exists with an extra (without the) trailing slash for the
 // given path.
-func (n *node) getValue(path string, bg_ctx context.Context) (handle Handle, ctx context.Context, tsr bool) {
-	ctx = bg_ctx
+func (n *node) getValue(path string) (handle Handle, p Params, tsr bool) {
 walk: // outer loop for walking the tree
 	for {
 		if len(path) > len(n.path) {
@@ -359,7 +357,14 @@ walk: // outer loop for walking the tree
 					}
 
 					// save param value
-					ctx = context.WithValue(ctx, n.path[1:], path[:end])
+					if p == nil {
+						// lazy allocation
+						p = make(Params, 0, n.maxParams)
+					}
+					i := len(p)
+					p = p[:i+1] // expand slice within preallocated capacity
+					p[i].Key = n.path[1:]
+					p[i].Value = path[:end]
 
 					// we need to go deeper!
 					if end < len(path) {
@@ -387,7 +392,14 @@ walk: // outer loop for walking the tree
 
 				case catchAll:
 					// save param value
-					ctx = context.WithValue(ctx, n.path[2:], path)
+					if p == nil {
+						// lazy allocation
+						p = make(Params, 0, n.maxParams)
+					}
+					i := len(p)
+					p = p[:i+1] // expand slice within preallocated capacity
+					p[i].Key = n.path[2:]
+					p[i].Value = path
 
 					handle = n.handle
 					return

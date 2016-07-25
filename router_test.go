@@ -5,10 +5,12 @@
 package httprouter
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 )
 
@@ -28,6 +30,27 @@ func (m *mockResponseWriter) WriteString(s string) (n int, err error) {
 
 func (m *mockResponseWriter) WriteHeader(int) {}
 
+func TestParams(t *testing.T) {
+	ps := Params{
+		Param{"param1", "value1"},
+		Param{"param2", "value2"},
+		Param{"param3", "value3"},
+	}
+
+	req, _ := http.NewRequest("GET", "/user/gopher", nil)
+	ctx := context.WithValue(req.Context(), paramsKey, ps)
+	req = req.WithContext(ctx)
+
+	for i := range ps {
+		if val := GetParam(req, ps[i].Key); val != ps[i].Value {
+			t.Errorf("Wrong value for %s: Got %s; Want %s", ps[i].Key, val, ps[i].Value)
+		}
+	}
+	if val := GetParam(req, "noKey"); val != "" {
+		t.Errorf("Expected empty string for not found key; got: %s", val)
+	}
+}
+
 func TestRouter(t *testing.T) {
 	router := New()
 
@@ -35,7 +58,7 @@ func TestRouter(t *testing.T) {
 	router.Handle("GET", "/user/:name", func(w http.ResponseWriter, r *http.Request) {
 		routed = true
 		want := "gopher"
-		name := r.Context().Value("name").(string)
+		name := GetParam(r, "name")
 		if name != want {
 			t.Fatalf("wrong wildcard values: want %v, got %v", want, name)
 		}
@@ -437,9 +460,7 @@ func TestRouterLookup(t *testing.T) {
 	wantHandle := func(_ http.ResponseWriter, _ *http.Request) {
 		routed = true
 	}
-	wantParams := map[string]string{
-		"name": "gopher",
-	}
+	wantParams := Params{Param{"name", "gopher"}}
 
 	router := New()
 
@@ -455,7 +476,7 @@ func TestRouterLookup(t *testing.T) {
 	// insert route and try again
 	router.GET("/user/:name", wantHandle)
 
-	handle, ctx, tsr := router.Lookup("GET", "/user/gopher")
+	handle, params, tsr := router.Lookup("GET", "/user/gopher")
 	if handle == nil {
 		t.Fatal("Got no handle!")
 	} else {
@@ -465,10 +486,8 @@ func TestRouterLookup(t *testing.T) {
 		}
 	}
 
-	for k, v := range wantParams {
-		if ctx.Value(k) != v {
-			t.Fatalf("Wrong parameter values: want %v, got %v", v, ctx.Value("name"))
-		}
+	if !reflect.DeepEqual(params, wantParams) {
+		t.Fatalf("Wrong parameter values: want %v, got %v", wantParams, params)
 	}
 
 	handle, _, tsr = router.Lookup("GET", "/user/gopher/")

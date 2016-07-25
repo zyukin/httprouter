@@ -86,6 +86,37 @@ import (
 // wildcards (variables).
 type Handle func(http.ResponseWriter, *http.Request)
 
+// Param is a single URL parameter, consisting of a key and a value.
+type Param struct {
+	Key   string
+	Value string
+}
+
+// Params is a Param-slice, as returned by the router.
+// The slice is ordered, the first URL parameter is also the first slice value.
+// It is therefore safe to read values by the index.
+type Params []Param
+
+// Unexported type for cotext keys.
+type contextKeyType int
+
+// Key for Params stored in request context.
+const paramsKey contextKeyType = 0
+
+// GetParam returns the value of the first Param which key matches the given name in request.
+// If no matching Param is found, an empty string is returned.
+func GetParam(req *http.Request, name string) string {
+	if req != nil {
+		ps := req.Context().Value(paramsKey).(Params)
+		for i := range ps {
+			if ps[i].Key == name {
+				return ps[i].Value
+			}
+		}
+	}
+	return ""
+}
+
 // Router is a http.Handler which can be used to dispatch requests to different
 // handler functions via configurable routes
 type Router struct {
@@ -254,8 +285,7 @@ func (r *Router) ServeFiles(path string, root http.FileSystem) {
 	fileServer := http.FileServer(root)
 
 	r.GET(path, func(w http.ResponseWriter, req *http.Request) {
-		ctx := req.Context()
-		req.URL.Path = ctx.Value("filepath").(string)
+		req.URL.Path = GetParam(req, "filepath")
 		fileServer.ServeHTTP(w, req)
 	})
 }
@@ -271,9 +301,9 @@ func (r *Router) recv(w http.ResponseWriter, req *http.Request) {
 // If the path was found, it returns the handle function and the path parameter
 // values. Otherwise the third return value indicates whether a redirection to
 // the same path with an extra / without the trailing slash should be performed.
-func (r *Router) Lookup(method, path string) (Handle, context.Context, bool) {
+func (r *Router) Lookup(method, path string) (Handle, Params, bool) {
 	if root := r.trees[method]; root != nil {
-		return root.getValue(path, context.Background())
+		return root.getValue(path)
 	}
 	return nil, nil, false
 }
@@ -299,7 +329,7 @@ func (r *Router) allowed(path, reqMethod string) (allow string) {
 				continue
 			}
 
-			handle, _, _ := r.trees[method].getValue(path, nil)
+			handle, _, _ := r.trees[method].getValue(path)
 			if handle != nil {
 				// add request method to list of allowed methods
 				if len(allow) == 0 {
@@ -325,7 +355,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
 
 	if root := r.trees[req.Method]; root != nil {
-		if handle, ctx, tsr := root.getValue(path, req.Context()); handle != nil {
+		if handle, ps, tsr := root.getValue(path); handle != nil {
+			ctx := context.WithValue(req.Context(), paramsKey, ps)
 			handle(w, req.WithContext(ctx))
 			return
 		} else if req.Method != "CONNECT" && path != "/" {
