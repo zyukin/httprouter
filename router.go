@@ -77,13 +77,14 @@
 package httprouter
 
 import (
+	"context"
 	"net/http"
 )
 
 // Handle is a function that can be registered to a route to handle HTTP
 // requests. Like http.HandlerFunc, but has a third parameter for the values of
 // wildcards (variables).
-type Handle func(http.ResponseWriter, *http.Request, Params)
+type Handle func(http.ResponseWriter, *http.Request)
 
 // Param is a single URL parameter, consisting of a key and a value.
 type Param struct {
@@ -96,12 +97,21 @@ type Param struct {
 // It is therefore safe to read values by the index.
 type Params []Param
 
-// ByName returns the value of the first Param which key matches the given name.
+// Unexported type for cotext keys.
+type contextKeyType int
+
+// Key for Params stored in request context.
+const paramsKey contextKeyType = 0
+
+// GetParam returns the value of the first Param which key matches the given name in request.
 // If no matching Param is found, an empty string is returned.
-func (ps Params) ByName(name string) string {
-	for i := range ps {
-		if ps[i].Key == name {
-			return ps[i].Value
+func GetParam(req *http.Request, name string) string {
+	if req != nil {
+		ps := req.Context().Value(paramsKey).(Params)
+		for i := range ps {
+			if ps[i].Key == name {
+				return ps[i].Value
+			}
 		}
 	}
 	return ""
@@ -175,6 +185,11 @@ func New() *Router {
 	}
 }
 
+// Create new route group.
+func (r *Router) NewGroup(path string) *RouteGroup {
+	return newRouteGroup(r, path)
+}
+
 // GET is a shortcut for router.Handle("GET", path, handle)
 func (r *Router) GET(path string, handle Handle) {
 	r.Handle("GET", path, handle)
@@ -240,7 +255,7 @@ func (r *Router) Handle(method, path string, handle Handle) {
 // request handle.
 func (r *Router) Handler(method, path string, handler http.Handler) {
 	r.Handle(method, path,
-		func(w http.ResponseWriter, req *http.Request, _ Params) {
+		func(w http.ResponseWriter, req *http.Request) {
 			handler.ServeHTTP(w, req)
 		},
 	)
@@ -269,8 +284,8 @@ func (r *Router) ServeFiles(path string, root http.FileSystem) {
 
 	fileServer := http.FileServer(root)
 
-	r.GET(path, func(w http.ResponseWriter, req *http.Request, ps Params) {
-		req.URL.Path = ps.ByName("filepath")
+	r.GET(path, func(w http.ResponseWriter, req *http.Request) {
+		req.URL.Path = GetParam(req, "filepath")
 		fileServer.ServeHTTP(w, req)
 	})
 }
@@ -341,7 +356,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	if root := r.trees[req.Method]; root != nil {
 		if handle, ps, tsr := root.getValue(path); handle != nil {
-			handle(w, req, ps)
+			ctx := context.WithValue(req.Context(), paramsKey, ps)
+			handle(w, req.WithContext(ctx))
 			return
 		} else if req.Method != "CONNECT" && path != "/" {
 			code := 301 // Permanent redirect, request with GET method

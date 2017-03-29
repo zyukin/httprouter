@@ -113,9 +113,9 @@ func (n *node) addRoute(path string, handle Handle) {
 				}
 
 				// Update maxParams (max of all children)
-				for i := range child.children {
-					if child.children[i].maxParams > child.maxParams {
-						child.maxParams = child.children[i].maxParams
+				for j := range child.children {
+					if child.children[j].maxParams > child.maxParams {
+						child.maxParams = child.children[j].maxParams
 					}
 				}
 
@@ -173,10 +173,10 @@ func (n *node) addRoute(path string, handle Handle) {
 				}
 
 				// Check if a child with the next path byte exists
-				for i := 0; i < len(n.indices); i++ {
-					if c == n.indices[i] {
-						i = n.incrementChildPrio(i)
-						n = n.children[i]
+				for j := 0; j < len(n.indices); j++ {
+					if c == n.indices[j] {
+						j = n.incrementChildPrio(j)
+						n = n.children[j]
 						continue walk
 					}
 				}
